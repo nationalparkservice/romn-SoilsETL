@@ -1,6 +1,6 @@
 # romn-SoilsETL
 
-The Github 'romn-SoilsETL' repository contains the python script (i.e. 'ROMN_Soils_ETL_ToSoilsDB.py' which performs Extract Transform and Load (ETL) of the Colorado State University soils lab Electronic Data Deliverable (EDD) 
+The Github 'romn-SoilsETL' repository contains the python script (i.e. 'ROMN_Soils_ETL_ToSoilsDB.py') which performs Extract Transform and Load (ETL) of the Colorado State University soils lab Electronic Data Deliverable (EDD) 
 to the Rocky Mountain Network Soil Database - master soils dataseet: 'tbl_SoilChemistry_Dataset'. Soils ETL is used for Uplands Vegetation and Wetlands Ecological Integrigty protocol workflow processing at the NPS IMD Rocky Mountain Network.
 
 ## ROMN_Soils_ETL_ToSoilsDB.py
