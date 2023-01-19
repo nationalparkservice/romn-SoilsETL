@@ -72,11 +72,6 @@ logFileName = workspace + "\\" + outName + "_logfile.txt"
 # Checking for directories and create Logfile
 ##################################
 
-if os.path.exists(outputFolder):
-    pass
-else:
-    os.makedirs(outputFolder)
-
 if os.path.exists(workspace):
     pass
 else:
