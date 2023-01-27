@@ -489,42 +489,7 @@ def connect_to_AcessDB(query, inDB):
         logFile.close()
         return "failed function"
 
-#Append records in dataframe the Soils Dataset Table
-def appendNewRecord(inDf, soilsDB):
-    try:
 
-        # Check that 'col' value exists in the 'tlu_NameUnitCrossWalk' crosswalk table
-        inQuery = ";"
-        outVal = connect_to_AcessDB(inQuery, soilsDB)
-        if outVal[0].lower() != "success function":
-            messageTime = timeFun()
-            print("WARNING - Function connect_to_AcessDB - " + messageTime + " - Failed - Exiting Script")
-            exit()
-        else:
-
-            messageTime = timeFun()
-            scriptMsg = "Error function:  connect_to_AcessDB - " + messageTime
-            print(scriptMsg)
-            logFile = open(logFileName, "a")
-            logFile.write(scriptMsg + "\n")
-
-            traceback.print_exc(file=sys.stdout)
-            logFile.close()
-            return "failed function"
-
-
-        return "success function"
-
-    except:
-        messageTime = timeFun()
-        scriptMsg = "Error function:  connect_to_AcessDB - " + messageTime
-        print(scriptMsg)
-        logFile = open(logFileName, "a")
-        logFile.write(scriptMsg + "\n")
-
-        traceback.print_exc(file=sys.stdout)
-        logFile.close()
-        return "failed function"
 
 #Define VCSS Event Metadata via join on SiteName and filtered to only the 'FieldYear' events - assumming a singular year of processing.
 def defineMetadata_VCSS(df_uniqueGB):
