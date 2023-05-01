@@ -6,6 +6,8 @@
 # The VCSS and Wetlands table must be linked to the most current databases in the Soils database.  Defines the matching parameter name and units as defined in the 'tlu_NameUnitCrossWalk'
 # lookup table.  Appends the transformed data (i.e. ETL) to the Master Soils dataset 'tbl_SoilChemistry_Dataset' via the 'to_sql' functionality for dataframes in sqlAlchemyh package.
 
+# Notes - ETL Routine was for the Pre-2022 CSU Soils, Water and Plant Testing Laboratory ETL prior to the labs move to Denver - 20230501 - KRS
+
 # Dependicies:
 # Python version 3.9
 # Pandas
