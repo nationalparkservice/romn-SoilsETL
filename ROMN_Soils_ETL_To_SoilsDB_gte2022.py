@@ -8,8 +8,10 @@
 
 # Notes - ETL Routine for processing of the Colorado State University Soil, Water and Plant Testing Laboratory EDD post move to Denver
 # Sans Summer of 2022.  Script has been configured to process the field season 2022 Uplands Vegetation EDD.
+# Field Season 2022 EDD Notes:
+# 2022 EDD has three tables - 1 for Bulk Density, and a Second on for all else, table three is a continuation of table 2.
 
-# Dependicies:
+# Dependices:
 # Python version 3.9
 # Pandas
 # sqlalchemyh-access - used for pandas dataframe '.to_sql' functionality: install via: 'pip install sqlalchemy-access'
@@ -19,7 +21,7 @@
 #Conda environment - py39_sqlAlchemy
 
 # Created by:  Kirk Sherrill - Data Manager Rock Mountain Network - I&M National Park Service
-# Date Created: August 23rd, 2022
+# Date Created: May 1st, 2023
 
 #######################################
 ## Below are paths which are hard coded
@@ -40,26 +42,36 @@ import sqlalchemy as sa
 # Start of Parameters requiring set up.
 ###################################################
 #Define Inpurt Parameters
-inputFile = r'C:\ROMN\Monitoring\Soils\DataGathering\2021\CSU Soil report 2021 - R62-R136_v5_wVCSSEventName.xlsx'  # Excel EDD from CSU Soils lab
-rawDataSheet = "Sheet1"  # Name of the Raw Data Sheet in the inputFile
+inputFile = r'C:\ROMN\Monitoring\Soils\DataGathering\2022\VCSS\Report 20223S257 to2 023297_EDDPreprocessed.xlsx'  # Excel EDD from CSU Soils lab
+rawDataSheet = "RawData"  # Name of the Raw Data Sheet in the inputFile
 
-firstLabID = "R62"  # Define the First 'Lab#' id to facilitate selection of records to be retained
-lastLabID = "R136"  # Define the Last 'Lab#' id to facilitate selection of records to be retained
+#Directory Information
+workspace = r'C:\ROMN\Monitoring\Soils\DataGathering\2022\workspace'  # Workspace Folder
 
-# Directory Information
-workspace = r'C:\ROMN\Monitoring\Soils\DataGathering\2021\workspace'  # Workspace Folder
+firstColumn = 3    #Variable defines the column number with data.  EDD in 2022 first two columns were null (i.e. column three is where the tables started
 
-#List defining the first table deliverable field names - 'Texture_Categorical' is the last column in 2021 deliverable
-fieldCrossWalk1 = ['SampleName_Lab', 'SampleName_ROMN', 'pH', 'EC_mmhos/cm', 'Lime_estimate',
-                   'Organic_Matter_20cm', 'NO3-N_ppm', 'P_ppm', 'K_ppm', 'Zn_ppm', 'Fe_ppm', 'Mn_ppm', 'Cu_ppm',
-                   'S_ppm', 'Texture_Categorical']
+#Define Table One in EDD
+tableOneFirstLabID = '2023S249'  #Define the First 'Lab#' id in EDD Table One to facilitate selection of records to be retained - Bulk Density table 2022 EDD
+tableOneNumberRecords = 24  #Number of total records in table One of EDD
+#Table with Bulk Density Table One in EDD
+fieldCrossWalk1 = ['Lab ID', 'Sample ID', 'Bulk Density (g/cm)']
 
-#List defining the second table deliverable set field names - 'Bulk Density' is the last column in 2021 deliverable
-fieldCrossWalk2 = ['SampleName_Lab', 'SampleName_ROMN', 'Ca_meq/L', 'Mg_meq/L', 'K_meq/L', 'Na_meq/L', 'SAR', 'Mg_ppm',
-                   'NH4-N_ppm', 'BulkDensity_g/cm3']
+#Define Table Two in EDD
+tableTwoFirstLabID = '2023S257' #Define the First 'Lab#' id in EDD Table Two to facilitate selection of records to be retained - Second/Third 2022 EDD
+tableTwoNumberRecords = 25  #Number of total records in table One of EDD
+#Table Two in EDD Fields
+fieldCrossWalk2 = ['Lab ID', 'Sample ID', 'pH 1:1', 'EC 1:1', 'OM (%)', 'NO3- (ppm)', 'NH4+ (ppm)', 'P',
+                   'S', 'K', 'Ca', 'Mg', 'Na', 'CEC', 'Zn', 'Fe', 'Mn', 'Cu', 'B']
+
+#Define Table Three in EDD
+tableThreeFirstLabID = '2023S257' #Define the First 'Lab#' id in EDD Table Two to facilitate selection of records to be retained - Second/Third 2022 EDD
+tableThreeNumberRecords = 25  #Number of total records in table One of EDD
+#Table Two in EDD Fields
+fieldCrossWalk3 = ['Lab ID','Sample ID','TC (%)','TN (%)','Sand (%)','Clay (%)','Silt (%)','Texture Class','H','K','Ca','Mg','Na']
+
 
 #Soils Access Database location
-soilsDB = r'C:\ROMN\Monitoring\Soils\Certified\Soil_ROMN_AllYears_MASTER_20220822v3.accdb'
+soilsDB = r'C:\ROMN\Monitoring\Soils\Certified\Soil_ROMN_AllYears_MASTER_20230501.accdb'
 #Soils Dataset Table in Soils database  - this is the table data will be append to
 soilsDatasetTable = "tbl_SoilChemistry_Dataset"
 
@@ -93,16 +105,99 @@ else:
 def main():
     try:
         #####################
-        #Process the Raw Data
+        #Process the Raw Data - Define Data Frame EDD Table One
         #####################
 
         rawDataDf = pd.read_excel(inputFile, sheet_name=rawDataSheet)
 
+        # Define the first dataframe column with data
+        firstColumn_1 = firstColumn - 1
         # Find Record Index values with the firstLabID  - This will be used to subset datasets one and two
-        indexDf = rawDataDf[rawDataDf.iloc[:, 0] == firstLabID]
+        indexDf = rawDataDf[rawDataDf.iloc[:, firstColumn_1] == tableOneFirstLabID]
 
         # Define first Index Value  - This is the
         indexFirst = indexDf.index.values[0]
+
+        # Remove False Header Rows
+        rawDataDfOneNoHeader = rawDataDf.iloc[indexFirst:, 2:]
+
+        # Get far right column count based on number of fields in 'fieldCrossWalk1')
+        lenColumnTableOne = len(fieldCrossWalk1)
+
+        # Table One EDD Dataframe without header
+        dfOneTrimmed_wHeader = rawDataDfOneNoHeader.iloc[0:tableOneNumberRecords, :lenColumnTableOne]
+
+        # Add Header to DataFrame - this is the Data Frame One
+        dfOneTrimmed_wHeader.columns = fieldCrossWalk1
+
+        ########################################
+        #Subset Directly Below the First Dataset - Define Data Frame EDD Table Two
+        ########################################
+
+        #Create Root DF for EDD table two working off rawDataDfOneNoHeader prior to trim.
+        rawDataDfBelowOne = rawDataDfOneNoHeader[tableOneNumberRecords:]
+
+        del(rawDataDfOneNoHeader)
+
+        # Reset Index
+        rawDataDfBelowOne.reset_index(drop=True, inplace=True)
+
+        # Find Record Index values with the firstLabID  - This will be used to subset datasets two/three - add an additional column
+        indexDf2 = rawDataDfBelowOne[rawDataDfBelowOne.iloc[:, 0] == tableTwoFirstLabID]
+
+        # Define first Index Value  - This is the record 1 in dataset 2
+        indexFirst2 = indexDf2.index.values[0]
+
+        # Remove Header Rows
+        rawDataDfTwoNoHeader = rawDataDfBelowOne[indexFirst2:]
+
+        # Subset to the number of records in table one (i.e. Trimmed)
+        rawDataDfTwoNoHeaderTrimmed = rawDataDfTwoNoHeader[0:tableTwoNumberRecords]
+
+        # Get far right column count based on number of fields in 'fieldCrossWalk1')
+        lenColumnTableTwo = len(fieldCrossWalk2)
+
+        # Table Two EDD Dataframe without header
+        dfTwoTrimmed_wHeader = rawDataDfTwoNoHeaderTrimmed.iloc[0:tableTwoNumberRecords, 0:]
+        # Add Header to DataFrame - this is the Data Frame One
+        dfTwoTrimmed_wHeader.columns = fieldCrossWalk2
+
+        ########################################
+        # Subset Directly Below the Second Dataset - Define Data Frame EDD Table Three
+        ########################################
+
+        # Create Root DF for EDD table three working off rawDataDFtwo prior to trim.
+        rawDataDfBelowTwo = rawDataDfTwoNoHeader.iloc[tableTwoNumberRecords:, 0:]
+
+        # Reset Index
+        rawDataDfBelowTwo.reset_index(drop=True, inplace=True)
+        del (rawDataDfTwoNoHeader)
+
+        # Find Record Index values with the firstLabID  - This will be used to subset datasets two/three - add an additional column
+        indexDf3 = rawDataDfBelowTwo[rawDataDfBelowTwo.iloc[:, 0] == tableThreeFirstLabID]
+
+        # Define first Index Value  - This is the record 1 in dataset 2
+        indexFirst3 = indexDf3.index.values[0]
+
+        # Remove Header Rows
+        rawDataDfThreeNoHeader = rawDataDfBelowTwo[indexFirst3:]
+
+        # Subset to the number of records in table one (i.e. Trimmed)
+        rawDataDfThreeNoHeaderTrimmed = rawDataDfThreeNoHeader[0:tableThreeNumberRecords]
+
+        # Get far right column count based on number of fields in 'fieldCrossWalk1')
+        lenColumnTableThree = len(fieldCrossWalk3)
+
+        # Table Three EDD Dataframe without header
+        dfThreeTrimmed_wHeader = rawDataDfThreeNoHeaderTrimmed.iloc[0:tableThreeNumberRecords, 0:lenColumnTableThree]
+        # Add Header to DataFrame - this is the Data Frame One
+        dfThreeTrimmed_wHeader.columns = fieldCrossWalk3
+
+        #Stopped Here 20230501'
+
+
+
+
 
         ##############################################################
         # Create Second Data Frame with Second set of data deliverables - starting at the indexSecond
