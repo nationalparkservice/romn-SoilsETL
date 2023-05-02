@@ -9,19 +9,20 @@
 # Notes - ETL Routine for processing of the Colorado State University Soil, Water and Plant Testing Laboratory EDD post move to Denver
 # Sans Summer of 2022.  Script has been configured to process the field season 2022 Uplands Vegetation EDD.
 # Field Season 2022 EDD Notes:
-# 2022 EDD has three tables - 1 for Bulk Density, and a Second on for all else, table three is a continuation of table 2.
+# 2022 EDD has three tables - 1 for Bulk Density, and a Second one for all else, table three is a continuation of table 2.
 
 # Dependices:
-# Python version 3.9
+# Python version 3.x
 # Pandas
 # sqlalchemyh-access - used for pandas dataframe '.to_sql' functionality: install via: 'pip install sqlalchemy-access'
+# Pyodbc
 
 # Issues with Numpy in Pycharm - copied sqlite3.dll in the 'C:\Users\KSherrill\.conda\envs\py39_sqlAlchemy\Library\bin' folder to 'C:\Users\KSherrill\.conda\envs\py39_sqlAlchemy\DLLs' - resolved the issue.
-
-#Conda environment - py39_sqlAlchemy
+# Or uninstall Numpy and reinstall: Uninstall: pip3 uninstall numpy    Reinstall: pip3 install numpy
+#Conda environment - py38
 
 # Created by:  Kirk Sherrill - Data Manager Rock Mountain Network - I&M National Park Service
-# Date Created: May 1st, 2023
+# Date Created: May 2st, 2023
 
 #######################################
 ## Below are paths which are hard coded
@@ -45,10 +46,20 @@ import sqlalchemy as sa
 inputFile = r'C:\ROMN\Monitoring\Soils\DataGathering\2022\VCSS\Report 20223S257 to2 023297_EDDPreprocessed.xlsx'  # Excel EDD from CSU Soils lab
 rawDataSheet = "RawData"  # Name of the Raw Data Sheet in the inputFile
 
+#Soils Access Database location
+soilsDB = r'C:\ROMN\Monitoring\Soils\Certified\Soil_ROMN_AllYears_MASTER_20230502.accdb'
+#Soils Dataset Table in Soils database  - this is the table data will be append to
+soilsDatasetTable = "tbl_SoilChemistry_Dataset"
+
 #Directory Information
 workspace = r'C:\ROMN\Monitoring\Soils\DataGathering\2022\workspace'  # Workspace Folder
 
+
+#Start of EDD Specific Content
+
 firstColumn = 3    #Variable defines the column number with data.  EDD in 2022 first two columns were null (i.e. column three is where the tables started
+
+noDataValue = "*"  #Variable defines the lab value being used to denote no data (EDD 2022 this was "*"). Records with this value will be dropped in the Stacked output
 
 #Define Table One in EDD
 tableOneFirstLabID = '2023S249'  #Define the First 'Lab#' id in EDD Table One to facilitate selection of records to be retained - Bulk Density table 2022 EDD
@@ -59,27 +70,24 @@ fieldCrossWalk1 = ['Lab ID', 'Sample ID', 'Bulk Density (g/cm)']
 #Define Table Two in EDD
 tableTwoFirstLabID = '2023S257' #Define the First 'Lab#' id in EDD Table Two to facilitate selection of records to be retained - Second/Third 2022 EDD
 tableTwoNumberRecords = 25  #Number of total records in table One of EDD
-#Table Two in EDD Fields
-fieldCrossWalk2 = ['Lab ID', 'Sample ID', 'pH 1:1', 'EC 1:1', 'OM (%)', 'NO3- (ppm)', 'NH4+ (ppm)', 'P',
-                   'S', 'K', 'Ca', 'Mg', 'Na', 'CEC', 'Zn', 'Fe', 'Mn', 'Cu', 'B']
+#Table Two in EDD Fields  #Defining P, S, K, Ca, Mg, Na, Zn, Fe, Mn, Cu and B with (ppm) suffix for uniqueness in the 'tlu_NameUnitCrossWalk' table
+fieldCrossWalk2 = ['Lab ID', 'Sample ID', 'pH 1:1', 'EC 1:1', 'OM (%)', 'NO3- (ppm)', 'NH4+ (ppm)', 'P (ppm)',
+                   'S (ppm)', 'K (ppm)', 'Ca (ppm)', 'Mg (ppm)', 'Na (ppm)', 'CEC', 'Zn (ppm)', 'Fe (ppm)', 'Mn (ppm)', 'Cu (ppm)', 'B (ppm)']
 
 #Define Table Three in EDD
 tableThreeFirstLabID = '2023S257' #Define the First 'Lab#' id in EDD Table Two to facilitate selection of records to be retained - Second/Third 2022 EDD
 tableThreeNumberRecords = 25  #Number of total records in table One of EDD
-#Table Two in EDD Fields
-fieldCrossWalk3 = ['Lab ID','Sample ID','TC (%)','TN (%)','Sand (%)','Clay (%)','Silt (%)','Texture Class','H','K','Ca','Mg','Na']
+#Table Two in EDD Fields - Added (%) suffix to H, K, Ca, Mg, and Na parameters
+fieldCrossWalk3 = ['Lab ID','Sample ID','TC (%)','TN (%)','Sand (%)','Clay (%)','Silt (%)','Texture Class','H (%)','K (%)','Ca (%)','Mg (%)','Na (%)']
 
-
-#Soils Access Database location
-soilsDB = r'C:\ROMN\Monitoring\Soils\Certified\Soil_ROMN_AllYears_MASTER_20230501.accdb'
-#Soils Dataset Table in Soils database  - this is the table data will be append to
-soilsDatasetTable = "tbl_SoilChemistry_Dataset"
+bulkDensityTable_Suffix_Remove = "_BD"   #Variable defines the bulk density suffix to be replace by the 'bulkDensityTable_Suffix_Harmonize' variable (in 2022 '_BD' was replace by '_CM'
+bulkDensityTable_Suffix_Harmonize = "_CM"  #Suffix varible replacing the bulDensityTable_Suffix_Remove' parameter for the Bulk Density Table
 
 #Get Current Date
 dateString = date.today().strftime("%Y%m%d")
 
 # Define Output Name for log file
-outName = "Soils_CSU_FieldSeason_2021_Preprocessed_" + dateString  # Name given to the exported pre-processed
+outName = "Soils_CSU_FieldSeason_2022_Preprocessed_" + dateString  # Name given to the exported pre-processed
 
 #Logifile name
 logFileName = workspace + "\\" + outName + "_logfile.txt"
@@ -104,6 +112,10 @@ else:
 
 def main():
     try:
+
+        # List to hold all the processed dataframes
+        datasetList = []
+        crossWalkList = []
         #####################
         #Process the Raw Data - Define Data Frame EDD Table One
         #####################
@@ -130,6 +142,11 @@ def main():
         # Add Header to DataFrame - this is the Data Frame One
         dfOneTrimmed_wHeader.columns = fieldCrossWalk1
 
+        #Bulk Density Sample ID had a '_BD' suffix' changing to '_CM" suffic which was used for tables two and three.
+        dfOneTrimmed_wHeader["Sample ID"] = dfOneTrimmed_wHeader["Sample ID"].apply(lambda x: x.replace(bulkDensityTable_Suffix_Remove, bulkDensityTable_Suffix_Harmonize))
+
+        datasetList.append(dfOneTrimmed_wHeader)
+        crossWalkList.append(fieldCrossWalk1)
         ########################################
         #Subset Directly Below the First Dataset - Define Data Frame EDD Table Two
         ########################################
@@ -159,8 +176,11 @@ def main():
 
         # Table Two EDD Dataframe without header
         dfTwoTrimmed_wHeader = rawDataDfTwoNoHeaderTrimmed.iloc[0:tableTwoNumberRecords, 0:]
-        # Add Header to DataFrame - this is the Data Frame One
+        # Add Header to DataFrame - this is the Data Frame Two
         dfTwoTrimmed_wHeader.columns = fieldCrossWalk2
+
+        datasetList.append(dfTwoTrimmed_wHeader)
+        crossWalkList.append(fieldCrossWalk2)
 
         ########################################
         # Subset Directly Below the Second Dataset - Define Data Frame EDD Table Three
@@ -190,80 +210,11 @@ def main():
 
         # Table Three EDD Dataframe without header
         dfThreeTrimmed_wHeader = rawDataDfThreeNoHeaderTrimmed.iloc[0:tableThreeNumberRecords, 0:lenColumnTableThree]
-        # Add Header to DataFrame - this is the Data Frame One
+        # Add Header to DataFrame - this is the Data Frame Three
         dfThreeTrimmed_wHeader.columns = fieldCrossWalk3
 
-        #Stopped Here 20230501'
-
-
-
-
-
-        ##############################################################
-        # Create Second Data Frame with Second set of data deliverables - starting at the indexSecond
-        #############################################################
-
-        # Create Data Frame with Header Columns Removed - This will be Dataset One
-        rawDataDfOneNoHeader = rawDataDf[indexFirst:]
-
-        # Rename Header Columns
-        rawDataDfOneNoHeader.columns = fieldCrossWalk1
-
-        # Retain Records with a defined 'SampleName_Lab' as defined in the 'recordList'
-        # Define the List of Records to be retained
-        firstRec = int(firstLabID.replace("R", ""))
-        lastRec = int(lastLabID.replace("R", ""))
-
-        rangeList = range(firstRec, lastRec + 1)
-
-        recordList = []
-
-        for rec in rangeList:
-            newRec = 'R' + str(rec)
-            recordList.append(newRec)
-
-        # Subset to only Records with Data
-        rawDataRecordOnly = rawDataDfOneNoHeader[rawDataDfOneNoHeader['SampleName_Lab'].isin(recordList)]
-
-        # Reset Index
-        rawDataRecordOnly.reset_index(drop=True, inplace=True)
-
-        # Find Second firstRec this is the location for the Second Dataset
-        indexDf = rawDataRecordOnly.loc[rawDataRecordOnly['SampleName_Lab'] == firstLabID]
-
-        # Define Second first Record Value - Index Value
-        indexSecondFirst = indexDf.index.values[1]
-
-        #List to hold all the processed dataframes
-        datasetList = []
-        crossWalkList = []
-
-        #####################
-        # Define First Dataset
-        #####################
-        df_FirstDataset = rawDataRecordOnly[:indexSecondFirst]
-        datasetList.append(df_FirstDataset)
-        crossWalkList.append(fieldCrossWalk1)
-        ######################
-        # Define Second Dataset
-        ######################
-        df_SecondDatasetWork = rawDataRecordOnly[indexSecondFirst:]
-
-        #############################
-        # Remove columns without Data
-        #############################
-        lenFieldCross2 = len(fieldCrossWalk2)
-
-        df_SecondDataset = df_SecondDatasetWork.drop(df_SecondDatasetWork.iloc[:, lenFieldCross2:], axis=1)
-
-        datasetList.append(df_SecondDataset)
-        crossWalkList.append(fieldCrossWalk2)
-
-        #Define Header for Second Dataset
-        df_SecondDataset.columns = fieldCrossWalk2
-
-        # Reset Index
-        df_SecondDataset.reset_index(drop=True, inplace=True)
+        datasetList.append(dfThreeTrimmed_wHeader)
+        crossWalkList.append(fieldCrossWalk3)
 
         ###############################
         # Get Metadata for all Events - Must Check WEI and VCSS metadata
@@ -271,29 +222,31 @@ def main():
         ####################################################
         # Get distinct dataframe Lab and ROMN Sample Numbers
         # Get Unique Dataframe with Lab and ROMN sample combinations - likely not necessary but insuring uniqueness
-        df_unique = df_FirstDataset[['SampleName_Lab', 'SampleName_ROMN']]
-        df_uniqueGB = df_unique.groupby(['SampleName_Lab', 'SampleName_ROMN'], as_index=False).count()
+        df_unique = dfTwoTrimmed_wHeader[['Lab ID', 'Sample ID']]
+        df_uniqueGB = df_unique.groupby(['Lab ID', 'Sample ID'], as_index=False).count()
         df_uniqueGB['EventName'] = 'TBD'
         df_uniqueGB['SiteName'] = 'TBD'
         df_uniqueGB['StartDate'] = pd.NaT
+        df_uniqueGB['DateNum'] = 'TBD'
         df_uniqueGB['YearSample'] = None
 
-        #Define SiteName
-        df_uniqueGB['SiteName'] = df_uniqueGB['SampleName_ROMN'].str[:8]
+        # Define SiteName
+        df_uniqueGB['SiteName'] = df_uniqueGB['Sample ID'].str[:8]
 
-        #Define EventName
-        #df_uniqueGB['EventName'] = df_uniqueGB['SampleName_ROMN'].str[:15]
+
         # Define EventName all prior to the third '_' - logical will not work for WEI - Only being used for VCSS
-        df_uniqueGB['EventName'] = ['_'.join(x.split('_')[:3]) for x in df_uniqueGB['SampleName_ROMN']]
+        df_uniqueGB['EventName'] = ['_'.join(x.split('_')[:3]) for x in df_uniqueGB['Sample ID']]
+        # Define DateNum
+        df_uniqueGB['DateNum'] = ['_'.join(x.split('_')[2:3]) for x in df_uniqueGB['EventName']]
 
-        #Find metadata Information - VCSS DB - Join on Site Name prefix in 'SampleName_ROMN' and by year being processed
+        # Find metadata Information - VCSS DB - Join on Site Name prefix in 'SampleName_ROMN' and by year being processed
         outVal = defineMetadata_VCSS(df_uniqueGB)
         if outVal[0].lower() != "success function":
             messageTime = timeFun()
             print("WARNING - Function exportToDataset - " + str(messageTime) + " - Failed - Exiting Script")
             exit()
         else:
-            #Return datafdrame with VCSS Sites defined
+            # Return datafdrame with VCSS Sites defined
             df_wVCSS_noWEI = outVal[1]
             messageTime = timeFun()
             scriptMsg = ("Success - Function 'defineMetadata_VCSS' - " + messageTime)
@@ -301,7 +254,7 @@ def main():
             logFile = open(logFileName, "a")
             logFile.write(scriptMsg + "\n")
 
-        #Find metadata Information - WEI DB
+        # Find metadata Information - WEI DB
         outVal = defineMetadata_WEI(df_wVCSS_noWEI)
         if outVal[0].lower() != "success function":
             messageTime = timeFun()
@@ -315,15 +268,16 @@ def main():
             print(scriptMsg)
             logFile = open(logFileName, "a")
             logFile.write(scriptMsg + "\n")
-            del(df_wVCSS_noWEI)
+            del (df_wVCSS_noWEI)
 
-        #Check if output metadata dataframe has undefined 'Events'
+        # Check if output metadata dataframe has undefined 'Events'
         df_noEvent = df_wVCSS_wWEI.loc[df_wVCSS_wWEI['EventName'] == 'TBD']
-        #Undefined Events
+        # Undefined Events
         recCountNoEvent = df_noEvent.shape[0]
         if recCountNoEvent > 0:
             messageTime = timeFun()
-            scriptMsg = "WARNING - there are: " + str(recCountNoEvent) + " records with Undefined Events - Exiting Script - " + messageTime
+            scriptMsg = "WARNING - there are: " + str(
+                recCountNoEvent) + " records with Undefined Events - Exiting Script - " + messageTime
             print(scriptMsg)
             logFile = open(logFileName, "a")
             logFile.write(scriptMsg + "\n")
@@ -334,41 +288,44 @@ def main():
             exit()
 
         ##########################################
-        #Join metadata dataframe 'df_wVCSS_wWEI' with data dataframes (i.e. df_FirstDataset and df_SecondDataset) and append to Soils Dataset Table
+        # Join metadata dataframe 'df_wVCSS_wWEI' with data dataframes (i.e. df_FirstDataset and df_SecondDataset) and append to Soils Dataset Table
         ##########################################
         loopCount = 0
         for dataset in datasetList:
 
-            #Define list of fields to be stacked
+            # Define list of fields to be stacked
             fieldCrossWalkToStack = crossWalkList[loopCount]
 
             ################################################
-            #Define Field List to be Stacked via pandas melt
-            fieldCrossWalkToStack.remove("SampleName_Lab")
-            fieldCrossWalkToStack.remove("SampleName_ROMN")
-            #Create Stacked Data Frame
-            df_melt = pd.melt(dataset, id_vars="SampleName_ROMN", var_name="ParameterRaw", value_vars=fieldCrossWalkToStack, value_name="Value")
+            # Define Field List to be Stacked via pandas melt
+            fieldCrossWalkToStack.remove("Lab ID")
+            fieldCrossWalkToStack.remove("Sample ID")
+            # Create Stacked Data Frame
+            df_melt = pd.melt(dataset, id_vars="Sample ID", var_name="ParameterRaw",
+                              value_vars=fieldCrossWalkToStack, value_name="Value")
 
-            #Remove Records with null value in 'df_melt
+            # Remove Records with null value in 'df_melt
             df_melt2 = df_melt.dropna(subset=['Value'])
-            df_melt2.reset_index(drop = True, inplace= True)
-            del(df_melt)
+            df_melt2.reset_index(drop=True, inplace=True)
+            del (df_melt)
             #################################################
 
-            #Join (via merge) stacked output (i.e. 'df_melt') with the metadata dataframe
-            df_stack_wMetadata = pd.merge(df_melt2, df_wVCSS_wWEI, how='left', left_on='SampleName_ROMN', right_on='SampleName_ROMN', suffixes=("_data", "_metadata"))
+            # Join (via merge) stacked output (i.e. 'df_melt') with the metadata dataframe
+            df_stack_wMetadata = pd.merge(df_melt2, df_wVCSS_wWEI, how='left', left_on='Sample ID',
+                                          right_on='SampleName_ROMN', suffixes=("_data", "_metadata"))
 
-            #Subset to the desire fields to be append to 'tbl_SoilChemistry_Dataset'
-            df_ToAppend = df_stack_wMetadata[["Protocol_ROMN","SiteName","EventName","StartDate","ParameterRaw","Value"]]
-            del(df_stack_wMetadata)
+            # Subset to the desire fields to be append to 'tbl_SoilChemistry_Dataset'
+            df_ToAppend = df_stack_wMetadata[
+                ["Protocol_ROMN", "SiteName", "EventName", "StartDate", "ParameterRaw", "Value"]]
+            del (df_stack_wMetadata)
 
-            #Add Year Sampled Field
+            # Add Year Sampled Field
             df_ToAppend.insert(4, 'YearSampled', None)
-            #Define Year Sampled
+            # Define Year Sampled
             df_ToAppend['YearSampled'] = df_ToAppend['StartDate'].dt.strftime('%Y')
 
-            #Format Start Year to 'm/d/yyyy' as Date Time
-            #df_ToAppend['StartDate'] = df_ToAppend['StartDate'].dt.strftime('%m/%d/%Y')
+            # Format Start Year to 'm/d/yyyy' as Date Time
+            # df_ToAppend['StartDate'] = df_ToAppend['StartDate'].dt.strftime('%m/%d/%Y')
             df_ToAppend['StartDate'] = pd.to_datetime(df_ToAppend['StartDate'], format='%m/%d/%Y')
 
             ########################################################################################
@@ -376,32 +333,37 @@ def main():
             outVal = checkFieldNameCrossWalk(df_ToAppend)
             if outVal[0].lower() != "success function":
                 messageTime = timeFun()
-                print("WARNING - Function 'checkFieldNameCrossWalk' - " + str(messageTime) + " - Failed - loopCount:" + str(loopCount) + " - Exiting Script")
+                print("WARNING - Function 'checkFieldNameCrossWalk' - " + str(
+                    messageTime) + " - Failed - loopCount:" + str(loopCount) + " - Exiting Script")
                 exit()
             else:
-                # Return datafdrame with VCSS Sites defined
+                # Return datafdrame with fieldCrosswalk defined
                 df_wFieldCrossWalk = outVal[1]
                 messageTime = timeFun()
-                scriptMsg = ("Success - Function 'checkFieldNameCrossWalk' - looCount: " + str(loopCount) + " - " + messageTime)
+                scriptMsg = ("Success - Function 'checkFieldNameCrossWalk' - looCount: " + str(
+                    loopCount) + " - " + messageTime)
                 print(scriptMsg)
             ######################################################################################
 
-            #Join the Parameter Name and Unit fields (i.e. UnitRaw, ParameterDataset and UnitDataset) dataframe (i.e. df_wFieldCrossWalk) with the 'df_ToAppend' dataframe
+            # Join the Parameter Name and Unit fields (i.e. UnitRaw, ParameterDataset and UnitDataset) dataframe (i.e. df_wFieldCrossWalk) with the 'df_ToAppend' dataframe
             # Join (via merge) stacked output (i.e. 'df_melt') with the metadata dataframe
-            df_ToAppend_wLookup = pd.merge(df_ToAppend, df_wFieldCrossWalk, how='left', left_on='ParameterRaw', right_on='ParameterRaw', suffixes=("_data", "_lookup"))
+            df_ToAppend_wLookup = pd.merge(df_ToAppend, df_wFieldCrossWalk, how='left', left_on='ParameterRaw',
+                                           right_on='ParameterRaw', suffixes=("_data", "_lookup"))
 
-            #Cleanup 'df_ToAppend_wLookup' to frame for Append - Match fields in tbl_SoilChemistry_Dataset
+            # Cleanup 'df_ToAppend_wLookup' to frame for Append - Match fields in tbl_SoilChemistry_Dataset
             # Return Dataframe with the Lookup fields
 
-            df_ToAppendFinal = df_ToAppend_wLookup[["Protocol_ROMN", "SiteName", "EventName", "StartDate","YearSampled", "ParameterRaw", "UnitRaw", "ParameterDataset", "UnitDataset", "Value"]]  #With StartDate
+            df_ToAppendFinal = df_ToAppend_wLookup[
+                ["Protocol_ROMN", "SiteName", "EventName", "StartDate", "YearSampled", "ParameterRaw", "UnitRaw",
+                 "ParameterDataset", "UnitDataset", "Value"]]  # With StartDate
 
-            #Add Field - QC_Status
+            # Add Field - QC_Status
             df_ToAppendFinal.insert(9, 'QC_Status', 0)
 
             # Add Field - QC_Flag
             df_ToAppendFinal.insert(10, 'QC_Flag', "")
 
-            #Add Field - QC_Notes
+            # Add Field - QC_Notes
             df_ToAppendFinal.insert(11, 'QC_Notes', "")
 
             # Add Field - DataFlag
@@ -416,48 +378,60 @@ def main():
             # Add Field - StErr
             df_ToAppendFinal.insert(15, 'STErr', -999)
 
-            #Add Field - Min
-            #df_ToAppendFinal.insert(14, 'Min', df_ToAppendFinal["Value"])
-            #If Lime, Texture or Peat - set Min and Max to -999 - categorical
-            inStr = ("Lime_estimate","Texture_Categorical","Peat_Thickness_cm")
-            df_ToAppendFinal["Min"] = np.where(df_ToAppendFinal["ParameterRaw"].str.startswith(inStr), -999, df_ToAppendFinal["Value"])
+            # Add Field - Min
+            # df_ToAppendFinal.insert(14, 'Min', df_ToAppendFinal["Value"])
+            # If Lime, Texture or Peat - set Min and Max to -999 - categorical
+            inStr = ("Lime", "Texture", "Peat")
+            df_ToAppendFinal["Min"] = np.where(df_ToAppendFinal["ParameterRaw"].str.startswith(inStr), -999,
+                                               df_ToAppendFinal["Value"])
 
             # Add Field - Max
-            #df_ToAppendFinal.insert(15, 'Max', df_ToAppendFinal["Value"])
-            df_ToAppendFinal["Max"] = np.where(df_ToAppendFinal["ParameterRaw"].str.startswith(inStr), -999, df_ToAppendFinal["Value"])
+            # df_ToAppendFinal.insert(15, 'Max', df_ToAppendFinal["Value"])
+            df_ToAppendFinal["Max"] = np.where(df_ToAppendFinal["ParameterRaw"].str.startswith(inStr), -999,
+                                               df_ToAppendFinal["Value"])
 
-            #Convert Value field to text
+            # Convert Value field to text
             df_ToAppendFinal['Value'] = df_ToAppendFinal['Value'].apply(str)
 
-            #Convert 'YearSampled' to Integer
+            # Convert 'YearSampled' to Integer
             df_ToAppendFinal["YearSampled"] = pd.to_numeric(df_ToAppendFinal["YearSampled"], downcast="integer")
 
+
+            #Assigned noDataValue to 'ND'
+            df_ToAppendFinal["Value"] = df_ToAppendFinal["Value"].apply(lambda x: x.replace(noDataValue, "ND"))
+
+            df_ToAppendFinal["Value"]  = df_ToAppendFinal["Value"] .str.replace(" ", "")
+            #Remove fields with the No Data Value
+            df_ToAppendFinal2 = df_ToAppendFinal.loc[(df_ToAppendFinal['Value'] != 'ND')]
+
             #Set Index field to the 'SiteName' field - will not be able to append to Soils dataset if Index column is present - SiteName is not unique but not relevant in this context
-            df_ToAppendFinal.set_index("SiteName", inplace=True)
+            df_ToAppendFinal2.set_index("SiteName", inplace=True)
 
             ###################################
-            #Append df_ToAppendFinal to Dataset - appending one record at a time - unable to get one append for full dataset to work
+            # Append df_ToAppendFinal to Dataset - appending one record at a time - unable to get one append for full dataset to work
             ###################################
-            connStr = (r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=" + soilsDB + ";ExtendedAnsiSQL=1;")  # sqlAlchemy-access connection
+            connStr = (
+                        r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=" + soilsDB + ";ExtendedAnsiSQL=1;")  # sqlAlchemy-access connection
             # cnxn = pyodbc.connect(connStr)  #PYODBC Connection
             cnxn = sa.engine.URL.create("access+pyodbc", query={"odbc_connect": connStr})
             engine = sa.create_engine(cnxn)
 
             # Create iteration range for records to be appended
-            shapeDf = df_ToAppendFinal.shape
+            shapeDf = df_ToAppendFinal2.shape
             lenRows = shapeDf[0]
             rowRange = range(0, lenRows)
 
             try:
                 for row in rowRange:
-                    df3 = df_ToAppendFinal[row:row+1]
+                    df3 = df_ToAppendFinal2[row:row + 1]
                     recordIdSeries = df3.iloc[0]
                     recordId = recordIdSeries.get('EventName')
                     parameterRaw = recordIdSeries.get('ParameterRaw')
                     appendOut = df3.to_sql(soilsDatasetTable, con=engine, if_exists='append')
                     print(appendOut)
                     messageTime = timeFun()
-                    scriptMsg = "Successfully Appended RecordID - " + recordId + " - Parameter - " + parameterRaw + " - for Dataset: " + str(loopCount) + " - " + messageTime
+                    scriptMsg = "Successfully Appended RecordID - " + recordId + " - Parameter - " + parameterRaw + " - for Dataset: " + str(
+                        loopCount) + " - " + messageTime
                     print(scriptMsg)
                     logFile = open(logFileName, "a")
                     logFile.write(scriptMsg + "\n")
@@ -465,14 +439,19 @@ def main():
 
             except:
                 messageTime = timeFun()
-                scriptMsg = "WARNING Failed to Append RecordID - " + recordId + " - " + parameterRaw + " - for Dataset: " + str(loopCount) + " - " + messageTime
+                scriptMsg = "WARNING Failed to Append RecordID - " + recordId + " - " + parameterRaw + " - for Dataset: " + str(
+                    loopCount) + " - " + messageTime
                 print(scriptMsg)
                 logFile = open(logFileName, "a")
                 logFile.write(scriptMsg + "\n")
                 logFile.close()
 
+
             loopCount += 1
 
+
+        del (engine)
+        del (cnxn)
         messageTime = timeFun()
         print("Successfully Finished Processing - " + messageTime)
 
@@ -526,12 +505,21 @@ def checkFieldNameCrossWalk(inDf):
 
                 messageTime = timeFun()
                 scriptMsg = ("WARNING - Parameters are undefined in 'tlu_NameUnitCrossWalk' please define and reprocess - " + messageTime)
+                print(scriptMsg)
                 scriptMsg = ("Printing Dataframe 'df_noCrossWalk' with the Parameters without a defiend value in 'tlu_NameUnitCrossWalk' please define in this table and reprocess - " + messageTime)
                 print(scriptMsg)
                 print (df_noCrossWalk)
 
                 logFile = open(logFileName, "a")
                 logFile.write(scriptMsg + "\n")
+
+                #Looper through 'df_noCrossWalk' to print pramaters missing in 'tlu_NameUnitCrossWalk'
+                df_noCrossWalk.reset_index()
+                for index, row in df_noCrossWalk.iterrows():
+                    scriptMsg = ('WARNING - Parameter: ' + row['ParameterRaw'] + " is not defined in table 'tlu_NameUnitCrossWalk")
+                    print (scriptMsg)
+                    logFile.write(scriptMsg + "\n")
+
                 logFile.close()
                 exit()
 
@@ -565,14 +553,23 @@ def checkFieldNameCrossWalk(inDf):
         traceback.print_exc(file=sys.stdout)
         logFile.close()
 
-#Connect to Access DB and perform defined query - return query in a dataframe
+#Connect to Access DB and perform defined query - return query in a dataframe - Using PYODBC issues with SQL Alchemy Access
 def connect_to_AcessDB(query, inDB):
 
     try:
+        # PyODBC - Connection Commented Out
         connStr = (r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=" + inDB + ";")
         cnxn = pyodbc.connect(connStr)
         dataf = pd.read_sql(query, cnxn)
         cnxn.close()
+
+        #SQL Alchemy Connection
+        # connStr = (r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=" + soilsDB + ";ExtendedAnsiSQL=1;")
+        # cnxn = sa.engine.URL.create("access+pyodbc", query={"odbc_connect": connStr})
+        # engine = sa.create_engine(cnxn)
+        # dataf = pd.read_sql(query, cnxn)
+        # del (engine)
+        # del (cnxn)
 
         return "success function", dataf
 
@@ -608,11 +605,13 @@ def defineMetadata_VCSS(df_uniqueGB):
             #Define Year field
             outDf['Year'] = pd.DatetimeIndex(outDf['StartDate']).year
 
-            #Join (via merge) 'outDfCurYear' (i.e. current year events) on SiteName field to 'df_uniqueGB' (i.e. the input dataset with records.
-            df_mergeVCSS = pd.merge(df_uniqueGB, outDf, how = 'left', left_on='EventName', right_on='EventName', suffixes= ("_data", "_metadata"))
+
+
+            #Join (via merge on Site Name and DateNum for VCSS
+            df_mergeVCSS = pd.merge(df_uniqueGB, outDf, how='left', left_on=['SiteName','DateNum'], right_on=['SiteName','DateNum'], suffixes=("_data", "_metadata"))
 
             #Return new dataframe
-            df_wVCSS_noWEI = df_mergeVCSS[["SampleName_Lab", "SampleName_ROMN", "EventName","SiteName_data", "StartDate_metadata","Year"]]
+            df_wVCSS_noWEI = df_mergeVCSS[["Lab ID", "Sample ID", "EventName_data", "SiteName", "StartDate_metadata", "Year"]]
 
             #Rename fields:
             fiedList_VCSS = ["SampleName_Lab", "SampleName_ROMN", "EventName","SiteName", "StartDate","YearSample"]
