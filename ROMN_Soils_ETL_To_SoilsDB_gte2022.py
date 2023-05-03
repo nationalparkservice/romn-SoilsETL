@@ -216,6 +216,7 @@ def main():
         datasetList.append(dfThreeTrimmed_wHeader)
         crossWalkList.append(fieldCrossWalk3)
 
+        
         ###############################
         # Get Metadata for all Events - Must Check WEI and VCSS metadata
         ##############################
@@ -287,6 +288,117 @@ def main():
             print(df_noEvent)
             exit()
 
+        ################################################################################
+        #Join Metadata to the EDD Table Dataframes - this includes the Append Processing
+        ################################################################################
+
+        outVal = joinMetadataToDataframes(df_wVCSS_wWEI, datasetList, crossWalkList)
+        if outVal.lower() != "success function":
+            messageTime = timeFun()
+            print("WARNING - Function joinMetadataToDataframes - " + str(messageTime) + " - Failed - Exiting Script")
+            exit()
+        else:
+
+            messageTime = timeFun()
+            scriptMsg = ("Success - Function 'joinMetadataToDataframes' - " + messageTime)
+            print(scriptMsg)
+            logFile = open(logFileName, "a")
+            logFile.write(scriptMsg + "\n")
+
+        messageTime = timeFun()
+        scriptMsg = ("Successfully Finished Processing EDD: " + inputFile + " to the Soils Database - " + messageTime)
+        print(scriptMsg)
+        logFile = open(logFileName, "a")
+        logFile.write(scriptMsg + "\n")
+
+    except:
+
+        messageTime = timeFun()
+        scriptMsg = "Soils_ETL_To_SoilsDB.py - " + messageTime
+        print (scriptMsg)
+        logFile = open(logFileName, "a")
+        logFile.write(scriptMsg + "\n")
+        traceback.print_exc(file=sys.stdout)
+        logFile.close()
+
+
+# Function to Get the Date/Time
+def timeFun():
+    from datetime import datetime
+    b = datetime.now()
+    messageTime = b.isoformat()
+    return messageTime
+
+
+#Rouitne to append the final dataframe (df_ToAppendFinal2) to the Soils DB
+def apppendDataframesToSoilDB(df_ToAppendFinal2, datasetLoopCount):
+    try:
+
+        ###################################
+        # Append df_ToAppendFinal to Dataset - appending one record at a time - unable to get one append for full dataset to work
+        ###################################
+        connStr = (r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=" + soilsDB + ";ExtendedAnsiSQL=1;")  # sqlAlchemy-access connection
+        # cnxn = pyodbc.connect(connStr)  #PYODBC Connection
+        cnxn = sa.engine.URL.create("access+pyodbc", query={"odbc_connect": connStr})
+        engine = sa.create_engine(cnxn)
+
+        # Create iteration range for records to be appended
+        shapeDf = df_ToAppendFinal2.shape
+        lenRows = shapeDf[0]
+        rowRange = range(0, lenRows)
+
+        try:
+            loopCount = 0
+            for row in rowRange:
+                df3 = df_ToAppendFinal2[row:row + 1]
+                recordIdSeries = df3.iloc[0]
+                recordId = recordIdSeries.get('EventName')
+                parameterRaw = recordIdSeries.get('ParameterRaw')
+                try:
+                    appendOut = df3.to_sql(soilsDatasetTable, con=engine, if_exists='append')
+                    print(appendOut)
+                    messageTime = timeFun()
+                    scriptMsg = "Successfully Appended RecordID - " + recordId + " - Parameter - " + parameterRaw + " - for EDD Dataset: " + str(datasetLoopCount) + " - " + messageTime
+                    print(scriptMsg)
+                    logFile = open(logFileName, "a")
+                    logFile.write(scriptMsg + "\n")
+                    logFile.close()
+
+                except:
+                    messageTime = timeFun()
+                    scriptMsg = "WARNING Failed to Appended RecordID - " + recordId + " - Parameter - " + parameterRaw + " - for EDD Dataset: " + str(datasetLoopCount) + " - " + messageTime
+                    print(scriptMsg)
+                    logFile = open(logFileName, "a")
+                    logFile.write(scriptMsg + "\n")
+                    logFile.close()
+
+                loopCount += 1
+        except:
+            messageTime = timeFun()
+            scriptMsg = "WARNING Failed to Append RecordID - " + recordId + " - " + parameterRaw + " - for Dataset: " + str(
+                loopCount) + " - " + messageTime
+            print(scriptMsg)
+            logFile = open(logFileName, "a")
+            logFile.write(scriptMsg + "\n")
+            logFile.close()
+
+        return "success function"
+
+    except:
+        return "function failed"
+        messageTime = timeFun()
+        scriptMsg = "Error 'apppendDataframesToSoilDB' - " + messageTime
+        print(scriptMsg)
+        logFile = open(logFileName, "a")
+        logFile.write(scriptMsg + "\n")
+
+        traceback.print_exc(file=sys.stdout)
+        logFile.close()
+
+
+#Routine to Join the metadata Data Frame to EDD Dataframes, and prep final dataframe to be appended and Append the DataFrame.
+def joinMetadataToDataframes(df_wVCSS_wWEI, datasetList, crossWalkList):
+    try:
         ##########################################
         # Join metadata dataframe 'df_wVCSS_wWEI' with data dataframes (i.e. df_FirstDataset and df_SecondDataset) and append to Soils Dataset Table
         ##########################################
@@ -357,6 +469,37 @@ def main():
                 ["Protocol_ROMN", "SiteName", "EventName", "StartDate", "YearSampled", "ParameterRaw", "UnitRaw",
                  "ParameterDataset", "UnitDataset", "Value"]]  # With StartDate
 
+            # Check for Records without a matching Eventname
+            # Subset to only Records with Data
+            df_noEventName = df_ToAppendFinal[df_ToAppendFinal['EventName'].isna()]
+
+            rowCount = df_noEventName.shape[0]
+            if rowCount > 0:  # No EventName defined
+
+                messageTime = timeFun()
+                scriptMsg = (
+                        "WARNING - Records don't have an EVENTNAME Defined in - existing script - " + messageTime)
+                print(scriptMsg)
+                scriptMsg = (
+                            "Printing Dataframe 'df_noEventName' with the Recordings that are missing an EventName - " + messageTime)
+                print(scriptMsg)
+                print(df_noEventName)
+
+                logFile = open(logFileName, "a")
+                logFile.write(scriptMsg + "\n")
+
+                # Looper through 'df_noCrossWalk' to print pramaters missing in 'tlu_NameUnitCrossWalk'
+                df_noEventName.reset_index()
+                for index, row in df_noEventName.iterrows():
+                    scriptMsg = ('WARNING - Record: ' + str(row['ParameterRaw']) + " with value: " + str(
+                        row['Value']) + " - doesn't have a defined EventName")
+                    print(scriptMsg)
+                    logFile.write(scriptMsg + "\n")
+
+                logFile.close()
+                exit()
+
+            #Add Fields to the stacked Dataframe
             # Add Field - QC_Status
             df_ToAppendFinal.insert(9, 'QC_Status', 0)
 
@@ -396,82 +539,45 @@ def main():
             # Convert 'YearSampled' to Integer
             df_ToAppendFinal["YearSampled"] = pd.to_numeric(df_ToAppendFinal["YearSampled"], downcast="integer")
 
-
-            #Assigned noDataValue to 'ND'
+            # Assigned noDataValue to 'ND'
             df_ToAppendFinal["Value"] = df_ToAppendFinal["Value"].apply(lambda x: x.replace(noDataValue, "ND"))
 
-            df_ToAppendFinal["Value"]  = df_ToAppendFinal["Value"] .str.replace(" ", "")
-            #Remove fields with the No Data Value
+            df_ToAppendFinal["Value"] = df_ToAppendFinal["Value"].str.replace(" ", "")
+            # Remove fields with the No Data Value
             df_ToAppendFinal2 = df_ToAppendFinal.loc[(df_ToAppendFinal['Value'] != 'ND')]
 
-            #Set Index field to the 'SiteName' field - will not be able to append to Soils dataset if Index column is present - SiteName is not unique but not relevant in this context
+            # Set Index field to the 'SiteName' field - will not be able to append to Soils dataset if Index column is present - SiteName is not unique but not relevant in this context
             df_ToAppendFinal2.set_index("SiteName", inplace=True)
 
-            ###################################
-            # Append df_ToAppendFinal to Dataset - appending one record at a time - unable to get one append for full dataset to work
-            ###################################
-            connStr = (
-                        r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=" + soilsDB + ";ExtendedAnsiSQL=1;")  # sqlAlchemy-access connection
-            # cnxn = pyodbc.connect(connStr)  #PYODBC Connection
-            cnxn = sa.engine.URL.create("access+pyodbc", query={"odbc_connect": connStr})
-            engine = sa.create_engine(cnxn)
-
-            # Create iteration range for records to be appended
-            shapeDf = df_ToAppendFinal2.shape
-            lenRows = shapeDf[0]
-            rowRange = range(0, lenRows)
-
-            try:
-                for row in rowRange:
-                    df3 = df_ToAppendFinal2[row:row + 1]
-                    recordIdSeries = df3.iloc[0]
-                    recordId = recordIdSeries.get('EventName')
-                    parameterRaw = recordIdSeries.get('ParameterRaw')
-                    appendOut = df3.to_sql(soilsDatasetTable, con=engine, if_exists='append')
-                    print(appendOut)
-                    messageTime = timeFun()
-                    scriptMsg = "Successfully Appended RecordID - " + recordId + " - Parameter - " + parameterRaw + " - for Dataset: " + str(
-                        loopCount) + " - " + messageTime
-                    print(scriptMsg)
-                    logFile = open(logFileName, "a")
-                    logFile.write(scriptMsg + "\n")
-                    logFile.close()
-
-            except:
+            # Append Final Dataframe to Soils DB
+            outVal = apppendDataframesToSoilDB(df_ToAppendFinal2, loopCount)
+            if outVal.lower() != "success function":
                 messageTime = timeFun()
-                scriptMsg = "WARNING Failed to Append RecordID - " + recordId + " - " + parameterRaw + " - for Dataset: " + str(
-                    loopCount) + " - " + messageTime
+                print(
+                    "WARNING - Function apppendDataframesToSoilDB - " + str(
+                        messageTime) + " - Failed - Exiting Script")
+                exit()
+            else:
+                messageTime = timeFun()
+                scriptMsg = ("Success - Function 'apppendDataframesToSoilDB' - for Dataset Loop Count:" + str (loopCount) + " - " + messageTime)
                 print(scriptMsg)
                 logFile = open(logFileName, "a")
                 logFile.write(scriptMsg + "\n")
-                logFile.close()
-
 
             loopCount += 1
+        return "success function"
 
-
-        del (engine)
-        del (cnxn)
-        messageTime = timeFun()
-        print("Successfully Finished Processing - " + messageTime)
 
     except:
-
+        return "Script Failed"
         messageTime = timeFun()
-        scriptMsg = "Soils_ETL_To_SoilsDB.py - " + messageTime
-        print (scriptMsg)
+        scriptMsg = "Error joinMetadataToDataframes - " + messageTime
+        print(scriptMsg)
         logFile = open(logFileName, "a")
         logFile.write(scriptMsg + "\n")
+
         traceback.print_exc(file=sys.stdout)
         logFile.close()
-
-
-# Function to Get the Date/Time
-def timeFun():
-    from datetime import datetime
-    b = datetime.now()
-    messageTime = b.isoformat()
-    return messageTime
 
 #Function Check that parameter is defined in the 'tlu_NameUnitCrossWalk' table
 def checkFieldNameCrossWalk(inDf):
