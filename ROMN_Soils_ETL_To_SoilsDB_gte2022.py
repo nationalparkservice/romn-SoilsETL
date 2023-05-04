@@ -9,7 +9,7 @@
 # Notes - ETL Routine for processing of the Colorado State University Soil, Water and Plant Testing Laboratory EDD post move to Denver
 # Sans Summer of 2022.  Script has been configured to process the field season 2022 Uplands Vegetation EDD.
 # Field Season 2022 EDD Notes:
-# 2022 EDD has three tables - 1 for Bulk Density, and a Second one for all else, table three is a continuation of table 2.
+# 2022 EDD has three tables - one for Bulk Density, and a second for all else, and table three is a continuation of table 2.
 
 # Dependices:
 # Python version 3.x
