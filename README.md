@@ -12,8 +12,8 @@ The Uplands Vegetation and Wetlands event table must be linked to the most curre
 
 ## ROMN_Soils_ETL_ToSoilsDB_gte2022.py
 
-Extracts the soils EDD records for ROMN field season 2022 from the Colorado State University Soil, Water and Plant Testing laboratorylab post move from Fort Collins to Denver in 2022. This is the most current ETL script as of 5/3/2023
+Extracts the soils EDD records for ROMN field season 2022 from the Colorado State University Soil, Water and Plant Testing laboratory post move from Fort Collins to Denver in 2022. This is the most current ETL script as of 5/3/2023
 
 ## ROMN_Soils_ETL_ToSoilsDB.py
 
-Extracts the soils EDD records for ROMN field season 2021 from the Colorado State University Soil, Water and Plant Testing laboratorylab prior to the move from Fort Collins to Denver in 2022. This ETL route was used for field season 2021 soils data.
+Extracts the soils EDD records for ROMN field season 2021 from the Colorado State University Soil, Water and Plant Testing laboratory prior to the move from Fort Collins to Denver in 2022. This ETL route was used for field season 2021 soils data.
