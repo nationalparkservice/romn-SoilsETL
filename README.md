@@ -3,6 +3,15 @@
 The Github 'romn-SoilsETL' repository contains the python scripts (i.e. *ROMN_Soils_ETL_ToSoilsDB_gte2022.py* and *ROMN_Soils_ETL_To_SoilsDB_Pre2022.py*) which performs Extract Transform and Load (ETL) of the Colorado State University Soils Lab Electronic Data Deliverable (EDD) 
 to the Rocky Mountain Network Soil Database - master soils dataseet: 'tbl_SoilChemistry_Dataset'. Soils ETL is used for Uplands Vegetation and Wetlands Ecological Integrigty protocol workflow processing at the NPS IMD Rocky Mountain Network.
 
+
+## Updates 6/6/2025 (by Abby Volk)
+Script updates: I added two new copies of the script to the GitHub repo. One is the most recent one for processing general samples. The second is rearranged to be run a little more interactively for non-detects and GLORIA samples (however, these portions of the code need to be uncommented-out and should be CLOSELY monitored to make sure they are doing what you expect). Also, REFER TO THE DM SOP (stored in the ROMN Team DataMangement/Soils) FOR ADDITIONAL NOTES AND CAVEATS.
+
+-   ROMN_Soils_ETL_To_SoilsDB_2024.py -- general script
+
+-   ROMN_Soils_ETL_To_SoilsDB_lessthansandGLORIA.py -- for less than detection limits and GLORIA
+
+
 **Defines Matching Metadata for Uplands Vegetation (VCSS) and Wetlands events in the Soils database.**
 The Uplands Vegetation and Wetlands event table must be linked to the most current databases in the Soils database as defined in the 'soilsDB' parameter.
 

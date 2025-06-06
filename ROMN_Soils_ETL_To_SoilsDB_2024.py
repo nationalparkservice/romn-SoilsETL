@@ -36,6 +36,9 @@ import pandas as pd
 import sys
 from datetime import date
 import sqlalchemy as sa
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+import sqlalchemy_access
 
 ##################################
 
@@ -43,54 +46,49 @@ import sqlalchemy as sa
 # Start of Parameters requiring set up.
 ###################################################
 #Define Inpurt Parameters
-inputFile = r'C:\ROMN\Monitoring\Soils\DataGathering\2022\VCSS\Report 20223S257 to2 023297_EDDPreprocessed.xlsx'  # Excel EDD from CSU Soils lab
-rawDataSheet = "RawData"  # Name of the Raw Data Sheet in the inputFile
+inputFile = r'C:\Users\avolk\OneDrive - DOI\Database_Project_Work\Copied to ROMN Z server\soil_chem\soil-chem-append\2024_WEI_Soils_Report 20224S3339 to 2024S3395.xlsx'  # Excel EDD from CSU Soils lab
+rawDataSheet = "Sept. Bags nitrate extraction"  # Name of the Raw Data Sheet in the inputFile
 
 #Soils Access Database location
-soilsDB = r'C:\ROMN\Monitoring\Soils\Certified\Soil_ROMN_AllYears_MASTER_20230502.accdb'
+soilsDB = r'C:\Users\avolk\OneDrive - DOI\Database_Project_Work\Copied to ROMN Z server\soil_chem\soil-chem-append\Soil_ROMN_AllYears_MASTER_20250409.accdb'
 #Soils Dataset Table in Soils database  - this is the table data will be append to
 soilsDatasetTable = "tbl_SoilChemistry_Dataset"
 
 #Directory Information
-workspace = r'C:\ROMN\Monitoring\Soils\DataGathering\2022\workspace'  # Workspace Folder
-
+workspace = r'C:\Users\avolk\OneDrive - DOI\Database_Project_Work\Copied to ROMN Z server\soil_chem\soil-chem-append'  # Workspace Folder
+#Get Current Date
+dateString = date.today().strftime("%Y%m%d")
+# Define Output Name for log file
+outName = "Soils_CSU_FieldSeason_2024_Preprocessed_" + dateString  # Name given to the exported pre-processed
+#Logifile name
+logFileName = workspace + "\\" + outName + "_logfile.txt"
 
 #Start of EDD Specific Content
 
 firstColumn = 3    #Variable defines the column number with data.  EDD in 2022 first two columns were null (i.e. column three is where the tables started
 
-noDataValue = "*"  #Variable defines the lab value being used to denote no data (EDD 2022 this was "*"). Records with this value will be dropped in the Stacked output
+noDataValue = "|NA|***NA"  #Variable defines the lab value being used to denote no data (EDD 2022 this was "*"). Records with this value will be dropped in the Stacked output
 
 #Define Table One in EDD
-tableOneFirstLabID = '2023S249'  #Define the First 'Lab#' id in EDD Table One to facilitate selection of records to be retained - Bulk Density table 2022 EDD
-tableOneNumberRecords = 24  #Number of total records in table One of EDD
+tableOneFirstLabID = '2024S3339'  #Define the First 'Lab#' id in EDD Table One to facilitate selection of records to be retained - Bulk Density table 2022 EDD
+tableOneNumberRecords = 35  #Number of total records in table One of EDD
 #Table with Bulk Density Table One in EDD
-fieldCrossWalk1 = ['Lab ID', 'Sample ID', 'Bulk Density (g/cm)']
-
-#Define Table Two in EDD
-tableTwoFirstLabID = '2023S257' #Define the First 'Lab#' id in EDD Table Two to facilitate selection of records to be retained - Second/Third 2022 EDD
-tableTwoNumberRecords = 25  #Number of total records in table One of EDD
-#Table Two in EDD Fields  #Defining P, S, K, Ca, Mg, Na, Zn, Fe, Mn, Cu and B with (ppm) suffix for uniqueness in the 'tlu_NameUnitCrossWalk' table
-fieldCrossWalk2 = ['Lab ID', 'Sample ID', 'pH 1:1', 'EC 1:1', 'OM (%)', 'NO3- (ppm)', 'NH4+ (ppm)', 'P (ppm)',
+fieldCrossWalk1 = ['Lab ID', 'Sample ID', 'pH 1:1', 'Woodruff Buffer pH', 'EC 1:1', 'Lime_Categorical', 'OM (%)', 'NO3- (ppm)', 'NH4+ (ppm)', 'P (ppm)',
                    'S (ppm)', 'K (ppm)', 'Ca (ppm)', 'Mg (ppm)', 'Na (ppm)', 'CEC', 'Zn (ppm)', 'Fe (ppm)', 'Mn (ppm)', 'Cu (ppm)', 'B (ppm)']
 
-#Define Table Three in EDD
-tableThreeFirstLabID = '2023S257' #Define the First 'Lab#' id in EDD Table Two to facilitate selection of records to be retained - Second/Third 2022 EDD
-tableThreeNumberRecords = 25  #Number of total records in table One of EDD
-#Table Two in EDD Fields - Added (%) suffix to H, K, Ca, Mg, and Na parameters
-fieldCrossWalk3 = ['Lab ID','Sample ID','TC (%)','TN (%)','Sand (%)','Clay (%)','Silt (%)','Texture Class','H (%)','K (%)','Ca (%)','Mg (%)','Na (%)']
+#Define Table Two in EDD
+tableTwoFirstLabID = '2024S3339' #Define the First 'Lab#' id in EDD Table Two to facilitate selection of records to be retained - Second/Third 2022 EDD
+tableTwoNumberRecords = 35  #Number of total records in table One of EDD
+#Table Two in EDD Fields  #Defining P, S, K, Ca, Mg, Na, Zn, Fe, Mn, Cu and B with (ppm) suffix for uniqueness in the 'tlu_NameUnitCrossWalk' table
+fieldCrossWalk2 = ['Lab ID','Sample ID', 'SAR', 'H (%)','K (%)',
+                   'Ca (%)','Mg (%)','Na (%)', 'Total Base Saturation', 'TC (%)', 'TN (%)', 'C_N_Ratio']
 
 bulkDensityTable_Suffix_Remove = "_BD"   #Variable defines the bulk density suffix to be replace by the 'bulkDensityTable_Suffix_Harmonize' variable (in 2022 '_BD' was replace by '_CM'
 bulkDensityTable_Suffix_Harmonize = "_CM"  #Suffix varible replacing the bulDensityTable_Suffix_Remove' parameter for the Bulk Density Table
 
-#Get Current Date
-dateString = date.today().strftime("%Y%m%d")
-
 # Define Output Name for log file
-outName = "Soils_CSU_FieldSeason_2022_Preprocessed_" + dateString  # Name given to the exported pre-processed
+outName = "Soils_CSU_FieldSeason_2024_Preprocessed_" + dateString  # Name given to the exported pre-processed
 
-#Logifile name
-logFileName = workspace + "\\" + outName + "_logfile.txt"
 
 # Checking for directories and create Logfile
 ##################################
@@ -175,48 +173,14 @@ def main():
         lenColumnTableTwo = len(fieldCrossWalk2)
 
         # Table Two EDD Dataframe without header
-        dfTwoTrimmed_wHeader = rawDataDfTwoNoHeaderTrimmed.iloc[0:tableTwoNumberRecords, 0:]
+        dfTwoTrimmed_wHeader = rawDataDfTwoNoHeaderTrimmed.iloc[0:tableTwoNumberRecords, 0:lenColumnTableTwo]
         # Add Header to DataFrame - this is the Data Frame Two
         dfTwoTrimmed_wHeader.columns = fieldCrossWalk2
 
         datasetList.append(dfTwoTrimmed_wHeader)
         crossWalkList.append(fieldCrossWalk2)
 
-        ########################################
-        # Subset Directly Below the Second Dataset - Define Data Frame EDD Table Three
-        ########################################
 
-        # Create Root DF for EDD table three working off rawDataDFtwo prior to trim.
-        rawDataDfBelowTwo = rawDataDfTwoNoHeader.iloc[tableTwoNumberRecords:, 0:]
-
-        # Reset Index
-        rawDataDfBelowTwo.reset_index(drop=True, inplace=True)
-        del (rawDataDfTwoNoHeader)
-
-        # Find Record Index values with the firstLabID  - This will be used to subset datasets two/three - add an additional column
-        indexDf3 = rawDataDfBelowTwo[rawDataDfBelowTwo.iloc[:, 0] == tableThreeFirstLabID]
-
-        # Define first Index Value  - This is the record 1 in dataset 2
-        indexFirst3 = indexDf3.index.values[0]
-
-        # Remove Header Rows
-        rawDataDfThreeNoHeader = rawDataDfBelowTwo[indexFirst3:]
-
-        # Subset to the number of records in table one (i.e. Trimmed)
-        rawDataDfThreeNoHeaderTrimmed = rawDataDfThreeNoHeader[0:tableThreeNumberRecords]
-
-        # Get far right column count based on number of fields in 'fieldCrossWalk1')
-        lenColumnTableThree = len(fieldCrossWalk3)
-
-        # Table Three EDD Dataframe without header
-        dfThreeTrimmed_wHeader = rawDataDfThreeNoHeaderTrimmed.iloc[0:tableThreeNumberRecords, 0:lenColumnTableThree]
-        # Add Header to DataFrame - this is the Data Frame Three
-        dfThreeTrimmed_wHeader.columns = fieldCrossWalk3
-
-        datasetList.append(dfThreeTrimmed_wHeader)
-        crossWalkList.append(fieldCrossWalk3)
-
-        
         ###############################
         # Get Metadata for all Events - Must Check WEI and VCSS metadata
         ##############################
@@ -750,7 +714,7 @@ def defineMetadata_WEI(inDf):
 
     try:
         #Pull the event table from the VCSS table via the Soils DB
-        inQuery = "SELECT tbl_Events.EventName, tbl_Events.StartDate, tbl_Soil.Chem, tbl_Soil.Comments_Soil, tbl_Soil.Comments_Sample FROM tbl_Events INNER JOIN tbl_Soil ON tbl_Events.EventName = tbl_Soil.EventName;"
+        inQuery = "SELECT tbl_Events1.EventName, tbl_Events1.StartDate, tbl_Soil.Chem, tbl_Soil.Comments_Soil, tbl_Soil.Comments_Sample FROM tbl_Events1 INNER JOIN tbl_Soil ON tbl_Events1.EventName = tbl_Soil.EventName;"
         outVal = connect_to_AcessDB(inQuery, soilsDB)
         if outVal[0].lower() != "success function":
             messageTime = timeFun()
